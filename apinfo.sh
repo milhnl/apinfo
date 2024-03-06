@@ -14,8 +14,8 @@ lowercase_vars() {
 apinfo() {
     case "$(uname -s)" in
     Darwin)
-        PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework"
-        PATH="$PATH/Versions/A/Resources"
+        PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
+            )/Versions/Current/Resources"
         airport -I
         ;;
     Linux)
