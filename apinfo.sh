@@ -5,10 +5,50 @@ ifname() {
     printf '%s\n' /sys/class/net/*/wireless | awk -F'/' '/^[^*]*$/{ print $5 }'
 }
 
-lowercase_vars() {
-    sed -e 'h;s/:.*//' \
-        -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/' \
-        -e 'x;s/[^:]*://;H;x;s/\n/:/'
+apinfo_airport() {
+    sudo airport -I \
+        | awk -vOFS='\t' '
+            / +BSSID: / { bssid = $0; sub(/.*: /, "", bssid); next }
+            / +agrCtlRSSI: / { rssi = $0; sub(/.*: /, "", rssi); next }
+            / +channel: / { channel = $0; sub(/.*: /, "", channel); next }
+            / +SSID: / { ssid = $0; sub(/.*: /, "", ssid); next }
+            END {
+                print bssid, rssi, channel, ssid
+            }
+        '
+}
+
+apinfo_iw() {
+    iw dev "$(ifname)" link \
+        | awk -vOFS='\t' '
+            /^Connected to / {
+                bssid = substr($0, 14, 17)
+                next
+            }
+            /\t+SSID: / {
+                ssid = $0; sub(/.*: /, "", ssid)
+                if (ssid ~ /(\\x00)+/)
+                    ssid = "(hidden)"
+                next
+            }
+            /\t+signal: / {
+                rssi = $0; sub(/.*: /, "", rssi);
+                sub(/ dBm$/, "", rssi);
+                next
+            }
+            /\t+freq: / {
+                freq = $0; sub(/.*: /, "", freq)
+                if (freq > 2401 && freq < 2495) {
+                    channel = (freq - 2407) / 5
+                } else if (freq >= 5160 && freq <= 5885) {
+                    channel = (freq - 5160) / 5 + 32
+                }
+                next
+            }
+            END {
+                print bssid, rssi, channel, ssid
+            }
+        '
 }
 
 apinfo() {
@@ -17,20 +57,14 @@ apinfo() {
     Darwin)
         PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
             )/Versions/Current/Resources"
-        sudo airport -I
+        apinfo_airport
         ;;
     Linux)
-        iw dev "$(ifname)" link
+        apinfo_iw
         ;;
     esac \
-        | sed '
-            s/:\s*/:/g
-            s/^ *//;s/^\s*//
-            s/.*\([0-9a-f:]\{17\}\).*/BSSID:\1/
-            s/\(-[0-9]*\) dBm/\1/
-        ' \
-        | lowercase_vars \
-        | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -v OFS='\t' '
+        | sort -t"$(printf \\t)" -k2 \
+        | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -vFS='\t' -vOFS='\t' '
             BEGIN {
                 if (!system("[ -r \"$cfg\" ]")) {
                     while ((getline line <ENVIRON["cfg"]) > 0) {
@@ -40,36 +74,8 @@ apinfo() {
                 }
             }
             {
-                o[substr($0, 0, index($0, ":") - 1)] = \
-                    substr($0, index($0, ":") + 1);
+                print ($1 in addresses ? addresses[$1] : $1), $2, $3, $4
             }
-            END {
-                if (o["signal"] == "") {
-                    o["snr"] = o["agrctlnoise"] - o["agrctlrssi"]
-                } else {
-                    #Maybe this is actually the RSSI?
-                    o["snr"] = o["signal"]
-                }
-                if (o["channel"] == "") {
-                    if (o["freq"] > 2401 && o["freq"] < 2495) {
-                        o["channel"] = (o["freq"] - 2407) / 5
-                    } else {
-                        o["channel"] = o["freq"]
-                    }
-                }
-                if (match(o["bssid"], " \\*$" )) {
-                    o["bssid"] = substr(o["bssid"], 1, length(o["bssid"]) - 2)
-                    o["connected"] = " *"
-                }
-                if (o["bssid"] in addresses) {
-                    o["id"] = addresses[o["bssid"]]
-                } else {
-                    o["id"] = o["bssid"]
-                }
-                print (o["id"] o["connected"]), o["snr"], o["channel"], o["ssid"]
-                for (i in o) delete o[i]
-            }
-            END { if (o["bssid"]) output(); }
         '
 }
 
