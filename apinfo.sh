@@ -5,7 +5,29 @@ ifname() {
     printf '%s\n' /sys/class/net/*/wireless | awk -F'/' '/^[^*]*$/{ print $5 }'
 }
 
-apinfo_airport() {
+apinfo_airport_all() {
+    sudo airport -s \
+        | awk -vOFS='\t' '
+            NR == 1 {
+                ssid_i = index($0, "SSID")
+                bssid_i = index($0, "BSSID")
+                rssi_i = index($0, "RSSI")
+                channel_i = index($0, "CHANNEL")
+                next;
+            }
+            {
+                bssid = substr($0, bssid_i, 17)
+                rssi = substr($0, rssi_i, 3)
+                channel = substr($0, channel_i)
+                sub(/ .*/, "", channel)
+                ssid = substr($0, 1, ssid_i + 3)
+                sub(/^ */, "", ssid)
+                print bssid, rssi, channel, ssid
+            }
+        '
+}
+
+apinfo_airport_con() {
     sudo airport -I \
         | awk -vOFS='\t' '
             / +BSSID: / { bssid = $0; sub(/.*: /, "", bssid); next }
@@ -19,10 +41,25 @@ apinfo_airport() {
 }
 
 apinfo_iw() {
-    iw dev "$(ifname)" link \
+    if [ "${1:-}" = --all ] && shift; then
+        sudo iw dev "$(ifname)" scan
+    else
+        iw dev "$(ifname)" link
+    fi \
         | awk -vOFS='\t' '
             /^Connected to / {
                 bssid = substr($0, 14, 17)
+                next
+            }
+            /^BSS/ {
+                if (bssid) {
+                    print bssid, rssi, channel, ssid
+                    bssid = ""
+                    rssi = ""
+                    channel = ""
+                    ssid = ""
+                }
+                bssid = substr($0, 5, 17)
                 next
             }
             /\t+SSID: / {
@@ -45,6 +82,9 @@ apinfo_iw() {
                 }
                 next
             }
+            /.*\* primary channel: / {
+                channel = $0; sub(/.*: /, "", channel); next
+            }
             END {
                 print bssid, rssi, channel, ssid
             }
@@ -57,10 +97,14 @@ apinfo() {
     Darwin)
         PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
             )/Versions/Current/Resources"
-        apinfo_airport
+        if [ "${1:-}" = --all ] && shift; then
+            apinfo_airport_all
+        else
+            apinfo_airport_con
+        fi
         ;;
     Linux)
-        apinfo_iw
+        apinfo_iw "$@"
         ;;
     esac \
         | sort -t"$(printf \\t)" -k2 \
