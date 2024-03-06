@@ -16,7 +16,7 @@ apinfo() {
     Darwin)
         PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
             )/Versions/Current/Resources"
-        airport -I
+        sudo airport -I
         ;;
     Linux)
         iw dev "$(ifname)" link
