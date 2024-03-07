@@ -10,14 +10,10 @@ ifname() {
 
 apinfo_airport_all() {
     sudo airport -s \
-        | awk -vOFS='\t' '
+        | awk -vOFS='\t' -vnow="$(apinfo_airport_con)" '
             BEGIN {
-                command = "sudo airport -I"
-                while ( (command | getline current) > 0) {
-                    if (match(current, /^ +BSSID: /))
-                        bssid_now = substr(current, RLENGTH + 1)
-                }
-                close(command)
+                split(now, now_a)
+                bssid_now = now_a[1]
             }
             NR == 1 {
                 ssid_i = index($0, "SSID")
@@ -42,7 +38,17 @@ apinfo_airport_all() {
 apinfo_airport_con() {
     sudo airport -I \
         | awk -vOFS='\t' '
-            / +BSSID: / { bssid = $0; sub(/.*: /, "", bssid); next }
+            / +BSSID: / {
+                bssid = $0
+                sub(/.*: /, "", bssid)
+                bssid = ":" bssid ":"
+                while (match(bssid, /(^|:)[0-9a-f](:|$)/)) {
+                    bssid = substr(bssid, 1, RSTART) "0" \
+                        substr(bssid, RSTART + 1)
+                }
+                bssid = substr(bssid, 2, length(bssid) - 2)
+                next
+            }
             / +agrCtlRSSI: / { rssi = $0; sub(/.*: /, "", rssi); next }
             / +channel: / { channel = $0; sub(/.*: /, "", channel); next }
             / +SSID: / { ssid = $0; sub(/.*: /, "", ssid); next }
