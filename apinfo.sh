@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+die() { printf '%s\n' "$*" >&2; exit 1; }
+exists() { command -v "$1" >/dev/null 2>&1; }
+
 ifname() {
     printf '%s\n' /sys/class/net/*/wireless | awk -F'/' '/^[^*]*$/{ print $5 }'
 }
@@ -93,20 +96,19 @@ apinfo_iw() {
 
 apinfo() {
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
-    case "$(uname -s)" in
-    Darwin)
-        PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
-            )/Versions/Current/Resources"
+    PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
+        )/Versions/Current/Resources"
+    if exists airport; then
         if [ "${1:-}" = --all ] && shift; then
             apinfo_airport_all
         else
             apinfo_airport_con
         fi
-        ;;
-    Linux)
+    elif exists iw; then
         apinfo_iw "$@"
-        ;;
-    esac \
+    else
+        die "ERROR: apinfo can only work with iw or airport"
+    fi \
         | sort -t"$(printf \\t)" -k2 \
         | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -vFS='\t' -vOFS='\t' '
             BEGIN {
