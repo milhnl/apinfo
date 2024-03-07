@@ -11,6 +11,14 @@ ifname() {
 apinfo_airport_all() {
     sudo airport -s \
         | awk -vOFS='\t' '
+            BEGIN {
+                command = "sudo airport -I"
+                while ( (command | getline current) > 0) {
+                    if (match(current, /^ +BSSID: /))
+                        bssid_now = substr(current, RLENGTH + 1)
+                }
+                close(command)
+            }
             NR == 1 {
                 ssid_i = index($0, "SSID")
                 bssid_i = index($0, "BSSID")
@@ -25,7 +33,8 @@ apinfo_airport_all() {
                 sub(/ .*/, "", channel)
                 ssid = substr($0, 1, ssid_i + 3)
                 sub(/^ */, "", ssid)
-                print bssid, rssi, channel, ssid
+                con = bssid_now == bssid ? "*" : ""
+                print con, bssid, rssi, channel, ssid
             }
         '
 }
@@ -38,7 +47,7 @@ apinfo_airport_con() {
             / +channel: / { channel = $0; sub(/.*: /, "", channel); next }
             / +SSID: / { ssid = $0; sub(/.*: /, "", ssid); next }
             END {
-                print bssid, rssi, channel, ssid
+                print con, bssid, rssi, channel, ssid
             }
         '
 }
@@ -56,13 +65,16 @@ apinfo_iw() {
             }
             /^BSS/ {
                 if (bssid) {
-                    print bssid, rssi, channel, ssid
+                    print con, bssid, rssi, channel, ssid
                     bssid = ""
                     rssi = ""
                     channel = ""
                     ssid = ""
+                    con = ""
                 }
                 bssid = substr($0, 5, 17)
+                if ($0 ~ / -- associated$/)
+                    con = "*"
                 next
             }
             /\t+SSID: / {
@@ -89,7 +101,7 @@ apinfo_iw() {
                 channel = $0; sub(/.*: /, "", channel); next
             }
             END {
-                print bssid, rssi, channel, ssid
+                print con, bssid, rssi, channel, ssid
             }
         '
 }
@@ -113,6 +125,9 @@ apinfo() {
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
     PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
         )/Versions/Current/Resources"
+    if [ -t 1 ]; then
+        export APINFO_PRETTY_OUTPUT="${APINFO_PRETTY_OUTPUT-true}"
+    fi
     if exists airport; then
         if [ "${1:-}" = --all ] && shift; then
             apinfo_airport_all
@@ -124,7 +139,6 @@ apinfo() {
     else
         die "ERROR: apinfo can only work with iw or airport"
     fi \
-        | sort -t"$(printf \\t)" -k2 \
         | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -vFS='\t' -vOFS='\t' '
             BEGIN {
                 if (!system("[ -r \"$cfg\" ]")) {
@@ -135,9 +149,23 @@ apinfo() {
                 }
             }
             {
-                print ($1 in addresses ? addresses[$1] : $1), $2, $3, $4
+                if ("APINFO_PRETTY_OUTPUT" in ENVIRON && \
+                        ENVIRON["APINFO_PRETTY_OUTPUT"] != "false")
+                    printf( \
+                        $1 \
+                            ? "\033[7m%s\t%s\t%s\t%s\033[0m\n" \
+                            : "\033[0m%s\t%s\t%s\t%s\033[0m\n", \
+                        ($2 in addresses ? addresses[$2] : $2), $3, $4, $5 \
+                    )
+                else
+                    print $0
             }
-        '
+        ' \
+        | if [ -n "${APINFO_PRETTY_OUTPUT-}" ]; then
+            sort -k2nr | column -ts "$(printf \\t)"
+        else
+            sort -k3nr -t "$(printf \\t)"
+        fi
 }
 
 apinfo "$@"
