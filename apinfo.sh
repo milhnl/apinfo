@@ -53,7 +53,7 @@ apinfo_airport_con() {
 }
 
 apinfo_iw() {
-    if [ "${1:-}" = --all ] && shift; then
+    if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
         sudo iw dev "$(ifname)" scan
     else
         iw dev "$(ifname)" link
@@ -108,19 +108,21 @@ apinfo_iw() {
 
 apinfo_usage() {
     printf '%s\n' \
-        'Usage: apinfo [--all]' \
+        'Usage: apinfo [--all|--roam [ssid]]' \
         '' \
         'List WiFi access points with signal information' \
         '' \
         'Options:' \
         '  --all          List all access points' \
+        '  --roam [ssid]  List those matching SSID, which' \
+        '                 defaults to currently connected' \
         '' \
         'When no options are given, show only currently' \
         'connected access point.'
 }
 
 apinfo() {
-    [ "${1:-}" = --all ] || [ $# -eq 0 ] \
+    [ "${1:-}" = --all ] || [ "${1:-}" = --roam ] || [ $# -eq 0 ] \
         || die "$(apinfo_usage)"
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
     PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
@@ -128,8 +130,11 @@ apinfo() {
     if [ -t 1 ]; then
         export APINFO_PRETTY_OUTPUT="${APINFO_PRETTY_OUTPUT-true}"
     fi
+    if [ "${1-}" = --roam ]; then
+        export APINFO_FILTER_SSID="${2-}" #Empty/no argument is current SSID
+    fi
     if exists airport; then
-        if [ "${1:-}" = --all ] && shift; then
+        if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
             apinfo_airport_all
         else
             apinfo_airport_con
@@ -139,6 +144,7 @@ apinfo() {
     else
         die "ERROR: apinfo can only work with iw or airport"
     fi \
+        | sort -r \
         | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -vFS='\t' -vOFS='\t' '
             BEGIN {
                 if (!system("[ -r \"$cfg\" ]")) {
@@ -148,7 +154,13 @@ apinfo() {
                     }
                 }
             }
-            {
+            FNR == 1 && ("APINFO_FILTER_SSID" in ENVIRON) {
+                if (ENVIRON["APINFO_FILTER_SSID"])
+                    filter_ssid = ENVIRON["APINFO_FILTER_SSID"]
+                else
+                    filter_ssid = $5
+            }
+            !filter_ssid || filter_ssid == $5 {
                 if ("APINFO_PRETTY_OUTPUT" in ENVIRON && \
                         ENVIRON["APINFO_PRETTY_OUTPUT"] != "false")
                     printf( \
