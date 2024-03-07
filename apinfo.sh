@@ -94,7 +94,22 @@ apinfo_iw() {
         '
 }
 
+apinfo_usage() {
+    printf '%s\n' \
+        'Usage: apinfo [--all]' \
+        '' \
+        'List WiFi access points with signal information' \
+        '' \
+        'Options:' \
+        '  --all          List all access points' \
+        '' \
+        'When no options are given, show only currently' \
+        'connected access point.'
+}
+
 apinfo() {
+    [ "${1:-}" = --all ] || [ $# -eq 0 ] \
+        || die "$(apinfo_usage)"
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
     PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
         )/Versions/Current/Resources"
