@@ -8,6 +8,83 @@ ifname() {
     printf '%s\n' /sys/class/net/*/wireless | awk -F'/' '/^[^*]*$/{ print $5 }'
 }
 
+apinfo_swift_all() {
+    printf "%s" '
+        import CoreWLAN
+        func apinfo() {
+            let cur = "'"$(apinfo_wdutil_con \
+                | sed 's/\\/\\&/g;s/\t/\\t/g')"'".components(separatedBy: "\t")
+            let rssi = Int(cur.count < 5 ? "" : cur[2])
+            let bssid = cur.count < 5 ? "" : cur[1]
+            func dbDistance(_ other: Int) -> Int {
+                return rssi == nil
+                    ? 0 : other > rssi! ? (other - rssi!) * 3 : (rssi! - other)
+            }
+            var networks: Set<CWNetwork> = []
+            guard let d = CWWiFiClient.shared().interface()
+            else {
+                return
+            }
+            do {
+                networks = try d.scanForNetworks(withSSID: nil)
+                networks = d.cachedScanResults() ?? networks
+            } catch let error as NSError {
+                fputs("Error: \(error.localizedDescription)", stderr)
+            }
+            var found = false
+            Array(networks).sorted {
+                dbDistance($0.rssiValue) < dbDistance($1.rssiValue)
+            }
+            .map {
+                (
+                    d.ssid() == $0.ssid && d.wlanChannel() == $0.wlanChannel,
+                    "",
+                    $0.rssiValue,
+                    $0.wlanChannel?.channelNumber,
+                    $0.ssid
+                )
+            }
+            .forEach {
+                print(
+                    [
+                        !found && $0.0 ? "*" : "",
+                        !found && $0.0 ? bssid : $0.1,
+                        "\($0.2)",
+                        "\($0.3 ?? -1)",
+                        $0.4 ?? "(hidden)",
+                    ].joined(separator: "\t"))
+                if $0.0 && !found {
+                    found = true
+                }
+            }
+        }
+        apinfo()
+    ' | swift
+}
+
+apinfo_wdutil_con() {
+    sudo wdutil info \
+        | awk -vFS=' *[A-Za-z0-9 ]* *: ' -vOFS='\t' '
+            /^—+$/ { next }
+            /^WIFI$/ { wifi = 1; next }
+            /^[^ ]/ { wifi = 0; next }
+            /^ *BSSID *:/ && wifi { bssid = $2 }
+            /^ *SSID *:/ && wifi { ssid = $2 }
+            /^ *RSSI *:/ && wifi {
+                rssi = $2
+                sub(/ dBm$/, "", rssi)
+            }
+            /^ *Channel *:/ && wifi {
+                channel = $2
+                sub(/^5g/, "", channel)
+                sub(/ .*/, "", channel)
+            }
+            END {
+                print "", bssid, rssi, channel, ssid
+            }
+        '
+}
+
 apinfo_airport_all() {
     sudo airport -s \
         | awk -vOFS='\t' -vnow="$(apinfo_airport_con)" '
@@ -139,11 +216,18 @@ apinfo() {
     if [ "${1-}" = --roam ]; then
         export APINFO_FILTER_SSID="${2-}" #Empty/no argument is current SSID
     fi
-    if exists airport; then
+    if exists airport && [ "$(uname -s)" = Darwin ] \
+            && [ "$(bc -e "$(sw_vers -productVersion) < 14.4")" -eq 1 ]; then
         if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
             apinfo_airport_all
         else
             apinfo_airport_con
+        fi
+    elif exists wdutil && [ "$(uname -s)" = Darwin ]; then
+        if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
+            apinfo_swift_all | sed 's/\r$//'
+        else
+            apinfo_wdutil_con
         fi
     elif exists iw; then
         apinfo_iw "$@"

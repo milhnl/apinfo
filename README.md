@@ -14,9 +14,10 @@ If you can't figure this out and want to use this tool anyway, message me.
 
 ### Dependencies
 
-Currently `apinfo` supports `iw` (used in some Linux configurations) and
-`airport` (standard on macOS). Adding support for NetworkManager is quite easy,
-but I don't use it.
+`apinfo` is designed to work with what's already on your system. That said, it
+currently supports `iw` (used in some Linux configurations), a combination of
+`wdutil` and CoreWLAN (on macOS >=14.4) and `airport` (standard on macOS
+<14.4). Adding support for NetworkManager is quite easy, but I don't use it.
 
 ### Usage
 
@@ -78,3 +79,10 @@ It's a file containing mappings between BSSIDs and names, like so:
 
 Every line starts with the BSSID, then a space or a tab, and the rest of the
 line is the name you want to give to it.
+
+### Notes/bugs
+
+macOS does not expose BSSIDs anymore for networks you're not currently
+connected to. There is a solution involving code signing, which I don't feel
+like figuring out right now. This means that `apinfo` only names the AP you're
+currently connected to, and does not label the other ones.
