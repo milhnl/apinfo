@@ -150,7 +150,7 @@ apinfo() {
     else
         die "ERROR: apinfo can only work with iw or airport"
     fi \
-        | sort -r \
+        | LC_ALL=C sort -r \
         | cfg="$XDG_CONFIG_HOME/apinfo/addresses" awk -vFS='\t' -vOFS='\t' '
             BEGIN {
                 if (!system("[ -r \"$cfg\" ]")) {
