@@ -164,7 +164,7 @@ apinfo() {
                 if (ENVIRON["APINFO_FILTER_SSID"])
                     filter_ssid = ENVIRON["APINFO_FILTER_SSID"]
                 else
-                    filter_ssid = $5
+                    filter_ssid = $1 == "*" ? $5 : exp(70) #invalid ssid
             }
             !filter_ssid || filter_ssid == $5 {
                 if ("APINFO_PRETTY_OUTPUT" in ENVIRON && \
