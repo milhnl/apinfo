@@ -167,7 +167,7 @@ apinfo_iw() {
             }
             /\t+signal: / {
                 rssi = $0; sub(/.*: /, "", rssi);
-                sub(/(\.00) dBm$/, "", rssi);
+                sub(/(\.00)? dBm$/, "", rssi);
                 next
             }
             /\t+freq: / {
