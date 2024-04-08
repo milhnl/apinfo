@@ -52,8 +52,8 @@ use it.
     way, the BSSID is the MAC address (a fingerprint) of the access point's
     WiFi hardware. Which means that dual-band (i.e. combined 2.4 and 5 GHz)
     access points will show up twice.
--   The second column shows the signal strength, in dBm. A higher (less
-    negative) number is better.
+-   The second column shows the signal strength, in dBm. This is called RSSI. A
+    higher (less negative) number is better.
 -   After that, the channel. Channels 1-14 are 2.4 GHz, and 32-177 in the 5 Ghz
     range.
 -   Last but not least, the SSIDs: network names.
@@ -86,3 +86,8 @@ macOS does not expose BSSIDs anymore for networks you're not currently
 connected to. There is a solution involving code signing, which I don't feel
 like figuring out right now. This means that `apinfo` only names the AP you're
 currently connected to, and does not label the other ones.
+
+Sometimes, also on macOS, `wdutil` shows the signal strength as 0. The `--all`
+and `--roam` options have a heuristic/workaround for this, using the scan
+results. `apinfo` does not fix this when run without arguments, because
+scanning is slow.

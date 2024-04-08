@@ -14,31 +14,30 @@ apinfo_swift_all() {
         func apinfo() {
             let cur = "'"$(apinfo_wdutil_con \
                 | sed 's/\\/\\&/g;s/\t/\\t/g')"'".components(separatedBy: "\t")
-            let rssi = Int(cur.count < 5 ? "" : cur[2])
             let bssid = cur.count < 5 ? "" : cur[1]
-            func dbDistance(_ other: Int) -> Int {
-                return rssi == nil
-                    ? 0 : other > rssi! ? (other - rssi!) * 3 : (rssi! - other)
-            }
-            var networks: Set<CWNetwork> = []
             guard let d = CWWiFiClient.shared().interface()
             else {
                 return
             }
+            let rssi = d.rssiValue()
+            func dbDistance(_ other: Int) -> Int {
+                return other > rssi ? (other - rssi) * 3 : (rssi - other)
+            }
+            var networks: Set<CWNetwork> = []
+            var found = false
             do {
                 networks = try d.scanForNetworks(withSSID: nil)
                 networks = d.cachedScanResults() ?? networks
             } catch let error as NSError {
                 fputs("Error: \(error.localizedDescription)", stderr)
             }
-            var found = false
             Array(networks).sorted {
                 dbDistance($0.rssiValue) < dbDistance($1.rssiValue)
             }
             .map {
                 (
                     d.ssid() == $0.ssid && d.wlanChannel() == $0.wlanChannel,
-                    "",
+                    $0.bssid ?? "",
                     $0.rssiValue,
                     $0.wlanChannel?.channelNumber,
                     $0.ssid
@@ -48,7 +47,7 @@ apinfo_swift_all() {
                 print(
                     [
                         !found && $0.0 ? "*" : "",
-                        !found && $0.0 ? bssid : $0.1,
+                        !found && $0.0 && $0.1 == "" ? bssid : $0.1,
                         "\($0.2)",
                         "\($0.3 ?? -1)",
                         $0.4 ?? "(hidden)",
