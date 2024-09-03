@@ -216,7 +216,9 @@ apinfo() {
         export APINFO_FILTER_SSID="${2-}" #Empty/no argument is current SSID
     fi
     if exists airport && [ "$(uname -s)" = Darwin ] \
-            && [ "$(bc -e "$(sw_vers -productVersion) < 14.4")" -eq 1 ]; then
+        && [ "$(printf "%s\n14.4\n" "$(sw_vers -productVersion)" \
+            | sort -t. -k1,1nr -k2,2nr -k3,3nr -k4,4nr | head -n 1)" = 14.4 ]
+    then
         if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
             apinfo_airport_all
         else
