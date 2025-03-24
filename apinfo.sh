@@ -65,7 +65,7 @@ apinfo_swift_all() {
             }
         }
         apinfo()
-    ' | swift
+    ' | swift repl
 }
 
 apinfo_wdutil_con() {
