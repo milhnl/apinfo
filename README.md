@@ -82,12 +82,6 @@ line is the name you want to give to it.
 
 ### Notes/bugs
 
-macOS does not expose BSSIDs anymore for networks you're not currently
-connected to. There is a solution involving code signing, which I don't feel
-like figuring out right now. This means that `apinfo` only names the AP you're
-currently connected to, and does not label the other ones.
-
-Sometimes, also on macOS, `wdutil` shows the signal strength as 0. The `--all`
-and `--roam` options have a heuristic/workaround for this, using the scan
-results. `apinfo` does not fix this when run without arguments, because
-scanning is slow.
+macOS does not expose BSSIDs anymore. There is a solution involving
+entitlements and a GUI application, which I don't feel like figuring out right
+now. This means that `apinfo` can't name any access points.

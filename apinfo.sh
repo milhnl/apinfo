@@ -12,16 +12,24 @@ die() {
 exists() { command -v "$1" >/dev/null 2>&1; }
 
 ifname() {
-    printf '%s\n' /sys/class/net/*/wireless | awk -F'/' '/^[^*]*$/{ print $5 }'
+    case "$(uname -s)" in
+    Darwin)
+        networksetup -listallhardwareports \
+            | awk '/Wi-Fi|AirPort/ { getline; print $NF }'
+        ;;
+    Linux)
+        printf '%s\n' /sys/class/net/*/wireless \
+            | awk -F'/' '/^[^*]*$/{ print $5 }'
+        ;;
+    esac
 }
 
 apinfo_swift_all() {
-    set -- "$(apinfo_wdutil_con | sed 's/\\/\\&/g;s/\t/\\t/g')"
+    set -- "$(ipconfig getsummary "$(ifname)" | sed -n 's/^ *SSID : //p')"
     printf "%s" '
         import CoreWLAN
         func apinfo() {
-            let cur = "'"$1"'".components(separatedBy: "\t")
-            let bssid = cur.count < 5 ? "" : cur[1]
+            let ssid = "'"$1"'"
             guard let d = CWWiFiClient.shared().interface()
             else {
                 return
@@ -43,7 +51,7 @@ apinfo_swift_all() {
             }
             .map {
                 (
-                    d.ssid() == $0.ssid && d.wlanChannel() == $0.wlanChannel,
+                    ssid == $0.ssid && d.wlanChannel() == $0.wlanChannel,
                     $0.bssid ?? "",
                     $0.rssiValue,
                     $0.wlanChannel?.channelNumber,
@@ -54,7 +62,7 @@ apinfo_swift_all() {
                 print(
                     [
                         !found && $0.0 ? "*" : "",
-                        !found && $0.0 && $0.1 == "" ? bssid : $0.1,
+                        $0.1,
                         "\($0.2)",
                         "\($0.3 ?? -1)",
                         $0.4 ?? "(hidden)",
@@ -68,17 +76,25 @@ apinfo_swift_all() {
     ' | swift repl
 }
 
-apinfo_wdutil_con() {
-    sudo wdutil info \
-        | awk -vFS=' *[A-Za-z0-9 ]* *: ' -vOFS='\t' '
-            /^—+$/ { next }
-            /^WIFI$/ { wifi = 1; next }
-            /^[^ ]/ { wifi = 0; next }
+apinfo_darwin_con() {
+    system_profiler SPAirPortDataType -detailLevel basic \
+        | awk -vFS=' *[A-Za-z0-9 ]* *: ' -vifname="$(ifname)" -vOFS='\t' '
+            /^ *Interfaces:$/ {
+                interface_i = match($0, /[^ ]/) + 2
+            }
+            match($0, /[^ ]/) == interface_i {
+                wifi = substr($0, interface_i, length - interface_i) == ifname
+            }
+            /^ *Current Network Information:$/ && wifi {
+                network_i = match($0, /[^ ]/) + 2
+                getline
+                ssid = substr($0, network_i, length - network_i)
+            }
             /^ *BSSID *:/ && wifi { bssid = $2 }
             /^ *SSID *:/ && wifi { ssid = $2 }
-            /^ *RSSI *:/ && wifi {
+            /^ *Signal \/ Noise *:/ && wifi {
                 rssi = $2
-                sub(/ dBm$/, "", rssi)
+                sub(/ dBm.*$/, "", rssi)
             }
             /^ *Channel *:/ && wifi {
                 channel = $2
@@ -232,11 +248,11 @@ apinfo() {
         else
             apinfo_airport_con
         fi
-    elif exists wdutil && [ "$(uname -s)" = Darwin ]; then
+    elif exists ipconfig && [ "$(uname -s)" = Darwin ]; then
         if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
             apinfo_swift_all | sed 's/\r$//'
         else
-            apinfo_wdutil_con
+            apinfo_darwin_con
         fi
     elif exists iw; then
         apinfo_iw "$@"
