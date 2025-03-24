@@ -16,11 +16,11 @@ ifname() {
 }
 
 apinfo_swift_all() {
+    set -- "$(apinfo_wdutil_con | sed 's/\\/\\&/g;s/\t/\\t/g')"
     printf "%s" '
         import CoreWLAN
         func apinfo() {
-            let cur = "'"$(apinfo_wdutil_con \
-                | sed 's/\\/\\&/g;s/\t/\\t/g')"'".components(separatedBy: "\t")
+            let cur = "'"$1"'".components(separatedBy: "\t")
             let bssid = cur.count < 5 ? "" : cur[1]
             guard let d = CWWiFiClient.shared().interface()
             else {
@@ -214,8 +214,6 @@ apinfo() {
     [ "${1:-}" = --all ] || [ "${1:-}" = --roam ] || [ $# -eq 0 ] \
         || die "$([ "${1:-}" = --help ] && echo 0 || echo 1)" "$(apinfo_usage)"
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
-    PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
-        )/Versions/Current/Resources"
     if [ -t 1 ]; then
         export APINFO_PRETTY_OUTPUT="${APINFO_PRETTY_OUTPUT-true}"
     fi
@@ -223,9 +221,12 @@ apinfo() {
         export APINFO_FILTER_SSID="${2-}" #Empty/no argument is current SSID
     fi
     if exists airport && [ "$(uname -s)" = Darwin ] \
-        && [ "$(printf "%s\n14.4\n" "$(sw_vers -productVersion)" \
-            | sort -t. -k1,1nr -k2,2nr -k3,3nr -k4,4nr | head -n 1)" = 14.4 ]
-    then
+        && [ "$(
+            printf "%s\n14.4\n" "$(sw_vers -productVersion)" \
+                | sort -t. -k1,1nr -k2,2nr -k3,3nr -k4,4nr | head -n 1
+        )" = 14.4 ]; then
+        PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
+        )/Versions/Current/Resources"
         if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
             apinfo_airport_all
         else
