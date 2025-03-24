@@ -1,7 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-die() { printf '%s\n' "$*" >&2; exit 1; }
+die() {
+    if [ $# -eq 1 ]; then
+        printf '%s\n' "$1" >&2 && exit 1
+    else
+        (shift && printf '%s\n' "$*") >&2 && exit "$1"
+    fi
+}
+
 exists() { command -v "$1" >/dev/null 2>&1; }
 
 ifname() {
@@ -205,7 +212,7 @@ apinfo_usage() {
 
 apinfo() {
     [ "${1:-}" = --all ] || [ "${1:-}" = --roam ] || [ $# -eq 0 ] \
-        || die "$(apinfo_usage)"
+        || die "$([ "${1:-}" = --help ] && echo 0 || echo 1)" "$(apinfo_usage)"
     export XDG_CONFIG_HOME="${XDG_CONFIG_HOME-$HOME/.config}"
     PATH="$PATH:/System/Library/PrivateFrameworks/Apple80211.framework$(
         )/Versions/Current/Resources"
