@@ -24,16 +24,21 @@ ifname() {
     esac
 }
 
-apinfo_swift_all() {
-    set -- "$(ipconfig getsummary "$(ifname)" | sed -n 's/^ *SSID : //p')"
+apinfo_macos_create_application() {
+    set -- "0.1" #version
+    ! [ -x "$MACOS_APP_HOME/apinfo.app/Contents/MacOS/apinfo" ] \
+        || [ "$(
+            plutil -extract CFBundleVersion raw \
+                "$MACOS_APP_HOME/apinfo.app/Contents/Info.plist"
+        )" != "$1" ] \
+        || return 0
+    set -- "$1" "$(mktemp -d)/apinfo.swift"
     printf "%s" '
+        import Cocoa
+        import CoreLocation
         import CoreWLAN
-        func apinfo() {
-            let ssid = "'"$1"'"
-            guard let d = CWWiFiClient.shared().interface()
-            else {
-                return
-            }
+        import Foundation
+        func all(interface d: CWInterface) {
             let rssi = d.rssiValue()
             func dbDistance(_ other: Int) -> Int {
                 return other > rssi ? (other - rssi) * 3 : (rssi - other)
@@ -51,7 +56,8 @@ apinfo_swift_all() {
             }
             .map {
                 (
-                    ssid == $0.ssid && d.wlanChannel() == $0.wlanChannel,
+                    d.ssid() == $0.ssid && d.wlanChannel() == $0.wlanChannel
+                        && d.bssid() == $0.bssid,
                     $0.bssid ?? "",
                     $0.rssiValue,
                     $0.wlanChannel?.channelNumber,
@@ -72,39 +78,100 @@ apinfo_swift_all() {
                 }
             }
         }
-        apinfo()
-    ' | swift repl
+        func current(interface d: CWInterface) {
+            guard let bssid = d.bssid()
+            else {
+                return
+            }
+            print(
+                [
+                    "",
+                    bssid,
+                    "\(d.rssiValue())",
+                    "\(d.wlanChannel()?.channelNumber ?? -1)",
+                    d.ssid() ?? "(hidden)",
+                ].joined(separator: "\t"))
+        }
+        func apinfo() {
+            guard let interface = CWWiFiClient.shared().interface()
+            else {
+                fputs("Error: Could not get shared interface.\n", stderr)
+                exit(1)
+            }
+            if CommandLine.arguments.count > 1 {
+                all(interface: interface)
+            } else {
+                current(interface: interface)
+            }
+        }
+        class AppDelegate: NSObject, NSApplicationDelegate,
+            CLLocationManagerDelegate
+        {
+            var locationManager: CLLocationManager?
+            func applicationDidFinishLaunching(_ aNotification: Notification) {
+                locationManager = CLLocationManager()
+                locationManager?.delegate = self
+                locationManager?.requestAlwaysAuthorization()
+            }
+            func locationManager(
+                _ manager: CLLocationManager,
+                didChangeAuthorization authorization: CLAuthorizationStatus
+            ) {
+                switch authorization {
+                case .notDetermined:
+                    fputs("Will ask for permission now\n", stderr)
+                    return
+                case .denied, .restricted:
+                    fputs("Error: No location permission.\n", stderr)
+                    exit(1)
+                case .authorized, .authorizedAlways, .authorizedWhenInUse:
+                    apinfo()
+                default:
+                    fputs("Error: Unknown location permission state\n", stderr)
+                    exit(1)
+                }
+                NSApp.terminate(nil)
+            }
+        }
+        let delegate = AppDelegate()
+        NSApplication.shared.delegate = delegate
+        NSApplication.shared.run()
+    ' >"$2"
+    mkdir -p "$MACOS_APP_HOME/apinfo.app/Contents/MacOS"
+    printf "%s\n" \
+        '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"' \
+        '    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+        '<plist version="1.0">' \
+        '<dict>' \
+        '    <key>CFBundleName</key>' \
+        '    <string>apinfo</string>' \
+        '    <key>CFBundleIdentifier</key>' \
+        '    <string>nl.milh.apinfo</string>' \
+        '    <key>CFBundleVersion</key>' \
+        '    <string>'"$1"'</string>' \
+        '    <key>NSLocationAlwaysUsageDescription</key>' \
+        '    <string>AP metadata requires Location access</string>' \
+        '    <key>NSPrincipalClass</key>' \
+        '    <string>NSApplication</string>' \
+        '    <key>LSUIElement</key>' \
+        '    <true/>' \
+        '    <key>CFBundleExecutable</key>' \
+        '    <string>apinfo</string>' \
+        '</dict>' \
+        '</plist>' \
+        >"$MACOS_APP_HOME/apinfo.app/Contents/Info.plist"
+    swiftc -o "$MACOS_APP_HOME/apinfo.app/Contents/MacOS/apinfo" "$2" \
+        -framework Cocoa \
+        -framework CoreLocation \
+        -framework CoreWLAN
+    rm "$2" && rmdir "$(dirname "$2")"
 }
 
-apinfo_darwin_con() {
-    system_profiler SPAirPortDataType -detailLevel basic \
-        | awk -vFS=' *[A-Za-z0-9 ]* *: ' -vifname="$(ifname)" -vOFS='\t' '
-            /^ *Interfaces:$/ {
-                interface_i = match($0, /[^ ]/) + 2
-            }
-            match($0, /[^ ]/) == interface_i {
-                wifi = substr($0, interface_i, length - interface_i) == ifname
-            }
-            /^ *Current Network Information:$/ && wifi {
-                network_i = match($0, /[^ ]/) + 2
-                getline
-                ssid = substr($0, network_i, length - network_i)
-            }
-            /^ *BSSID *:/ && wifi { bssid = $2 }
-            /^ *SSID *:/ && wifi { ssid = $2 }
-            /^ *Signal \/ Noise *:/ && wifi {
-                rssi = $2
-                sub(/ dBm.*$/, "", rssi)
-            }
-            /^ *Channel *:/ && wifi {
-                channel = $2
-                sub(/^5g/, "", channel)
-                sub(/ .*/, "", channel)
-            }
-            END {
-                print "", bssid, rssi, channel, ssid
-            }
-        '
+apinfo_macos_application() {
+    MACOS_APP_HOME="${MACOS_APP_HOME-$HOME/Applications}"
+    apinfo_macos_create_application
+    "$MACOS_APP_HOME/apinfo.app/Contents/MacOS/apinfo" "$@"
 }
 
 apinfo_airport_all() {
@@ -248,12 +315,8 @@ apinfo() {
         else
             apinfo_airport_con
         fi
-    elif exists ipconfig && [ "$(uname -s)" = Darwin ]; then
-        if [ "${1:-}" = --all ] || [ "${1:-}" = --roam ]; then
-            apinfo_swift_all | sed 's/\r$//'
-        else
-            apinfo_darwin_con
-        fi
+    elif exists swiftc && [ "$(uname -s)" = Darwin ]; then
+        apinfo_macos_application "$@" | sed 's/\r$//'
     elif exists iw; then
         apinfo_iw "$@"
     else

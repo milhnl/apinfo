@@ -15,9 +15,9 @@ If you can't figure this out and want to use this tool anyway, message me.
 ### Dependencies
 
 `apinfo` is designed to work with what's already on your system. That said, it
-currently supports `iw` (used in some Linux configurations), a combination of
-`wdutil` and CoreWLAN (on macOS >=14.4) and `airport` (standard on macOS
-<14.4). Adding support for NetworkManager is quite easy, but I don't use it.
+currently supports `iw` (used in some Linux configurations), CoreWLAN (on
+macOS >=14.4) and `airport` (standard on macOS <14.4). Adding support for
+NetworkManager is quite easy, but I don't use it.
 
 ### Usage
 
@@ -82,6 +82,9 @@ line is the name you want to give to it.
 
 ### Notes/bugs
 
-macOS does not expose BSSIDs anymore. There is a solution involving
-entitlements and a GUI application, which I don't feel like figuring out right
-now. This means that `apinfo` can't name any access points.
+macOS might stop working again at some point. There's been some occasions in
+which I had to work around Apple suddenly deprecating required functionality.
+The current version compiles a bundled Swift application to
+`~/Applications/apinfo.app` which should be quite future-proof, as it requests
+the required permissions and uses CoreWLAN. Sometimes the RSSI is zero on
+single-AP mode though.
