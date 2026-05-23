@@ -352,9 +352,9 @@ apinfo() {
             }
         ' \
         | if [ -n "${APINFO_PRETTY_OUTPUT-}" ]; then
-            sort -k2nr | column -ts "$(printf \\t)"
+            sort -k2,2nr -t "$(printf \\t)" | column -ts "$(printf \\t)"
         else
-            sort -k3nr -t "$(printf \\t)"
+            sort -k3,3nr -t "$(printf \\t)"
         fi
 }
 
